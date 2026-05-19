@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:ec.europa.eu)",
+      "WebFetch(domain:fred.stlouisfed.org)",
+      "Bash(curl -s \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/dataflow/ESTAT?detail=allstubs\")",
+      "Bash(curl -s \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/datastructure/ESTAT/DSD_jvs_q_nace2?references=children\")",
+      "Bash(curl -s \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/jvs_q_nace2?sinceTimePeriod=2024-Q1&geo=DE&sizeclas=TOTAL&indic_em=JOBRATE&nace_r2=B-S&s_adj=SA\")",
+      "Bash(curl -s \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/lfsq_argan?sinceTimePeriod=2024-Q1&geo=DE&sex=T&age=Y15-64&unit=PC_POP\")",
+      "Bash(curl -s \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/jvs_q_nace2?sinceTimePeriod=2024-Q1&geo=DE&nace_r2=B-S\")",
+      "Bash(curl -s \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/lfsq_egan2?sinceTimePeriod=2024-Q1&geo=DE&sex=T\")",
+      "Bash(curl -s \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/lfsq_argan?sinceTimePeriod=2024-Q1&geo=DE&sex=T&age=Y15-64\")",
+      "Bash(curl -s \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/datastructure/ESTAT/DSD_jvs_q_nace2?references=children&detail=referencepartial\")",
+      "Bash(curl -s \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/contentconstraint/ESTAT/jvs_q_nace2_Constraint_1?references=none\")",
+      "Bash(curl -s -m 30 \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/jvs_q_nace2/Q.SA.JOBRATE.TOTAL.B-S.DE?sinceTimePeriod=2024-Q1\")",
+      "Bash(curl -s -m 30 \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/lfsq_egan2/Q..THS_PER.T..DE?sinceTimePeriod=2024-Q1\")",
+      "Bash(curl -s -m 30 \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/lfsq_argan/Q..PC.T.Y15-64.DE?sinceTimePeriod=2024-Q1\")",
+      "Bash(curl -s -m 30 \"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/jvs_q_nace2?detail=nodata\")"
+    ]
+  }
+}
