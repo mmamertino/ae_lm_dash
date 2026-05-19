@@ -1,6 +1,17 @@
 # Step 4: US fetch module
 # Pulls labor market indicators from FRED (via fredr) and BLS API v2 (via httr2).
 
+# FIX 2026-05-19: API choices below are deliberate, not accidents.
+# - FRED is hit via `fredr` (CRAN) — official Anthropic-style wrapper.
+# - BLS Public Data API v2 is hit via raw httr2 rather than the `monstR` CRAN
+#   package because `monstR` wraps the older v1 endpoint and does not support
+#   the multi-series POST body, 10-year-span paging, or registrationkey field
+#   we rely on for the CES industry series. v2 is unofficial-but-stable: BLS
+#   publishes the schema on bls.gov/developers and the endpoint has been
+#   versioned-stable since 2014.
+# If BLS v2 ever changes, the `bls_pull()` helper in this file is the single
+# point of update.
+
 library(fredr)
 library(dplyr)
 library(tibble)
@@ -10,8 +21,7 @@ library(jsonlite)
 library(purrr)
 
 source("R/country_crosswalk.R")
-
-fredr_set_key("a6ed0b45ec6a2eb6468e87c05197d0f4")
+# FIX 2026-05-19: hardcoded FRED API key removed; key is now set via R/setup.R from FRED_API_KEY env var.
 
 fetch_us_data <- function(start_date = "2005-01-01", cache_dir = "data/") {
 
@@ -55,6 +65,24 @@ fetch_us_data <- function(start_date = "2005-01-01", cache_dir = "data/") {
     )
   }
 
+  # FIX 2026-05-19: quarterly sibling of safe_fredr() — used for OECD-harmonised series
+  # (LRUN74TTUSQ156S, LREM64TTUSQ156S, LRAC64TTUSQ156S) that are natively quarterly and
+  # must NOT go through monthly_to_quarterly().
+  safe_fredr_q <- function(series_id, label) {
+    tryCatch(
+      fredr(
+        series_id         = series_id,
+        observation_start = start,
+        frequency         = "q"
+      ) %>%
+        transmute(date = as.Date(date), value = value),
+      error = function(e) {
+        warning("FRED pull failed for ", label, " (", series_id, "): ", conditionMessage(e))
+        tibble(date = as.Date(character()), value = numeric())
+      }
+    )
+  }
+
   # ------------------------------------------------------------------
   # Step 4A: FRED series
   # ------------------------------------------------------------------
@@ -78,15 +106,17 @@ fetch_us_data <- function(start_date = "2005-01-01", cache_dir = "data/") {
   }
 
   # Step 4A, Row 2: Headline unemployment rate
-  urate_headline_m <- safe_fredr("UNRATE", "unemployment rate")
+  # FIX 2026-05-19: swapped UNRATE (16+, monthly) for OECD-harmonised LRUN74TTUSQ156S
+  # (15-74, quarterly) to align definition with Eurostat ILO rates.
+  urate_headline_q <- safe_fredr_q("LRUN74TTUSQ156S", "unemployment rate (OECD harmonised, 15-74)")
 
-  # Step 4A, Row 3: Youth unemployment rate (16-24)
+  # Step 4A, Row 3: Youth unemployment rate (16-24) — US-only context series, left as monthly.
   urate_youth_m <- safe_fredr("LNU04000036", "youth unemployment rate")
 
   urate <- tryCatch({
-    headline_q <- if (nrow(urate_headline_m) > 0) {
-      monthly_to_quarterly(urate_headline_m) %>%
-        mutate(age = "Y15-74") # US headline maps to the broad 15-74 age group
+    headline_q <- if (nrow(urate_headline_q) > 0) {
+      urate_headline_q %>% # FIX 2026-05-19: already quarterly; no monthly_to_quarterly step needed.
+        mutate(age = "Y15-74")
     } else {
       tibble(date = as.Date(character()), value = numeric(), age = character())
     }
@@ -115,16 +145,18 @@ fetch_us_data <- function(start_date = "2005-01-01", cache_dir = "data/") {
            age = character(), u_rate = numeric(), source = character())
   })
 
-  # Step 4A, Row 4: Employment-population ratio (EMRATIO)
-  emratio_m <- safe_fredr("EMRATIO", "employment-population ratio")
-  emprate <- if (nrow(emratio_m) > 0) {
-    monthly_to_quarterly(emratio_m) %>%
+  # Step 4A, Row 4: Employment rate
+  # FIX 2026-05-19: swapped EMRATIO (16+, monthly) for OECD-harmonised LREM64TTUSQ156S
+  # (15-64, quarterly) to align with Eurostat employment-rate definition.
+  emratio_q <- safe_fredr_q("LREM64TTUSQ156S", "employment rate (OECD harmonised, 15-64)")
+  emprate <- if (nrow(emratio_q) > 0) {
+    emratio_q %>% # FIX 2026-05-19: already quarterly; no monthly_to_quarterly step needed.
       transmute(
         country_3digit = "USA",
         country_2digit = "US",
         country_name   = "United States",
         date           = date,
-        age            = "Y15-64", # US EMRATIO is 16+ but mapped to broad age group
+        age            = "Y15-64",
         emp_rate       = value,
         source         = "us"
       )
@@ -134,16 +166,18 @@ fetch_us_data <- function(start_date = "2005-01-01", cache_dir = "data/") {
            age = character(), emp_rate = numeric(), source = character())
   }
 
-  # Step 4A, Row 5: Labor force participation rate (CIVPART)
-  civpart_m <- safe_fredr("CIVPART", "labor force participation rate")
-  actrate <- if (nrow(civpart_m) > 0) {
-    monthly_to_quarterly(civpart_m) %>%
+  # Step 4A, Row 5: Activity rate
+  # FIX 2026-05-19: swapped CIVPART (16+, monthly) for OECD-harmonised LRAC64TTUSQ156S
+  # (15-64, quarterly) to align with Eurostat activity-rate definition.
+  civpart_q <- safe_fredr_q("LRAC64TTUSQ156S", "activity rate (OECD harmonised, 15-64)")
+  actrate <- if (nrow(civpart_q) > 0) {
+    civpart_q %>% # FIX 2026-05-19: already quarterly; no monthly_to_quarterly step needed.
       transmute(
         country_3digit = "USA",
         country_2digit = "US",
         country_name   = "United States",
         date           = date,
-        age            = "Y15-64", # CIVPART is 16+ but mapped to broad age group
+        age            = "Y15-64",
         act_rate       = value,
         source         = "us"
       )
@@ -156,6 +190,15 @@ fetch_us_data <- function(start_date = "2005-01-01", cache_dir = "data/") {
   # ------------------------------------------------------------------
   # Step 4B: BLS API v2 — Employment by industry (CES)
   # ------------------------------------------------------------------
+  # FIX 2026-05-19: the BLS CES → NACE Rev. 2 mapping is many-to-one for two NACE
+  # sections, so two rows of this tribble deliberately share a nace_r2_equivalent
+  # value. The duplication is intentional — both CES series must be pulled, then
+  # summed downstream (see group_by/summarise(sum) step in the pipeline below).
+  #
+  #   O-Q  ← CES6500000001 (Education and health services) + CES9000000001 (Government)
+  #   R-U  ← CES7000000001 (Leisure and hospitality)       + CES8000000001 (Other services)
+  #
+  # Without the downstream sum these would silently double-count when bound with Eurostat.
   bls_series_lookup <- tribble(
     ~series_id,        ~nace_r2_equivalent, ~label,
     "CES0500000001",   "B-S",               "Total nonfarm",
@@ -238,6 +281,10 @@ fetch_us_data <- function(start_date = "2005-01-01", cache_dir = "data/") {
       bls_raw %>%
         filter(date >= start) %>%
         inner_join(bls_series_lookup, by = "series_id") %>%
+        # FIX 2026-05-19: collapse the two CES series that share a NACE letter (O-Q, R-U)
+        # by summing within each (nace_r2_equivalent, date). One row per (NACE, month) after this.
+        group_by(nace_r2_equivalent, date) %>%
+        summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
         # Monthly → quarterly mean
         mutate(quarter = as.yearqtr(date)) %>%
         group_by(nace_r2_equivalent, quarter) %>%

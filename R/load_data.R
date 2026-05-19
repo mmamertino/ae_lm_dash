@@ -5,6 +5,7 @@
 library(dplyr)
 library(purrr)
 
+source("R/setup.R") # FIX 2026-05-19: load FRED key from env var before any module sources it.
 source("R/country_crosswalk.R")
 source("R/fetch_eurostat.R")
 source("R/fetch_uk.R")

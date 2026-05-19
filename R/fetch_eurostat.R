@@ -10,7 +10,12 @@ library(lubridate)
 source("R/country_crosswalk.R")
 
 # EU geo codes (the 6 European countries in our dashboard)
-EU_GEO <- c("DE", "FR", "IT", "ES", "NL", "GB")
+# FIX 2026-05-19: Eurostat uses "UK" (not "GB") for the United Kingdom. Using "GB"
+# here silently dropped every UK row at the post_process filter — see Task 5 audit
+# (data/uk_eurostat_coverage_audit_RAW.csv). The crosswalk still uses "GB" (ISO
+# 3166-1 alpha-2); post_process below rewrites "UK" → "GB" so downstream joins
+# keep working without touching country_crosswalk.R.
+EU_GEO <- c("DE", "FR", "IT", "ES", "NL", "UK")
 
 fetch_eurostat_data <- function(start_date = "2005-01-01", cache_dir = "data/") {
 
@@ -45,6 +50,9 @@ fetch_eurostat_data <- function(start_date = "2005-01-01", cache_dir = "data/") 
     if (nrow(df) == 0) return(df)
     df %>%
       filter(geo %in% EU_GEO) %>%
+      # FIX 2026-05-19: translate Eurostat's "UK" code to the crosswalk's "GB" so
+      # the downstream join_crosswalk(by = "country_2digit") matches the UK row.
+      mutate(geo = ifelse(geo == "UK", "GB", geo)) %>%
       filter(time >= start)
   }
 
@@ -135,9 +143,10 @@ fetch_eurostat_data <- function(start_date = "2005-01-01", cache_dir = "data/") 
     emp_raw <- safe_get_eurostat(
       id      = "lfsi_emp_q",
       filters = list(
-        sex    = "T",
-        unit   = "PC_POP",
-        s_adj  = "SA"
+        sex      = "T",
+        unit     = "PC_POP",
+        s_adj    = "SA",
+        indic_em = "EMP_LFS" # FIX 2026-05-19: lfsi_emp_q at unit=PC_POP also returns ACT (activity rate). Without this filter the block was pulling BOTH indicators and writing them all as emp_rate, producing ~2-4pp contamination per (country, age, quarter).
       ),
       label = "employment rate"
     )
@@ -167,20 +176,24 @@ fetch_eurostat_data <- function(start_date = "2005-01-01", cache_dir = "data/") 
   })
 
   # ------------------------------------------------------------------
-  # Step 3, Table row 4: Activity rate (lfsq_argan)
-  # lfsi_act_q was retired. Replacement: lfsq_argan
-  # Dimensions: freq, unit, sex, age, citizen, geo (no s_adj — data is NSA)
-  # Use citizen = "TOTAL" for aggregate activity rate
+  # Step 3, Table row 4: Activity rate (lfsi_emp_q with indic_em = "ACT")
   # ------------------------------------------------------------------
+  # FIX 2026-05-19: previous source was lfsq_argan, which is NSA — methodological
+  # inconsistency vs the other SA rates from lfsi_emp_q / une_rt_q. lfsi_act_q
+  # has been retired from the Eurostat TOC, so we derive the activity rate from
+  # lfsi_emp_q with indic_em = "ACT" ("Persons in the labour force"), unit =
+  # PC_POP, s_adj = SA — same table that powers the employment-rate block above.
+  # Tradeoff: lfsi_emp_q has no UK coverage; UK activity comes through fetch_uk.R.
   act_ages <- c("Y15-64", "Y20-64")
 
   actrate <- tryCatch({
     act_raw <- safe_get_eurostat(
-      id      = "lfsq_argan",
+      id      = "lfsi_emp_q",
       filters = list(
-        sex     = "T",
-        unit    = "PC",
-        citizen = "TOTAL"
+        sex      = "T",
+        unit     = "PC_POP",
+        s_adj    = "SA",
+        indic_em = "ACT"
       ),
       label = "activity rate"
     )
@@ -227,6 +240,11 @@ fetch_eurostat_data <- function(start_date = "2005-01-01", cache_dir = "data/") 
     if (nrow(nace_raw) > 0) {
       nace_raw %>%
         post_process(start, cw) %>%
+        # FIX 2026-05-19: lfsq_egan2 publishes 21 section codes (A-U) plus two
+        # aggregates ("TOTAL", "NRP"). Including those alongside the sections
+        # double-counts when bound with other modules' section-level rows.
+        # Keep only the 21 NACE Rev. 2 section letters.
+        filter(nace_r2 %in% LETTERS[1:21]) %>%
         transmute(
           country_2digit = geo,
           date           = time,
@@ -250,6 +268,12 @@ fetch_eurostat_data <- function(start_date = "2005-01-01", cache_dir = "data/") 
   # ------------------------------------------------------------------
   # Step 3, Table row 6: Employment by country of birth (lfsq_egacob)
   # ------------------------------------------------------------------
+  # FIX 2026-05-19: frequency verified — lfsq_egacob is quarterly by table
+  # structure (months 1/4/7/10), but historically only Q2 (April) of each year
+  # is populated; the other three quarters are NA. From ~2023 onwards all four
+  # quarters carry values. No code change needed — the table is genuinely
+  # quarterly; NA-valued quarters represent no-publication, not zero, and pass
+  # through to downstream consumers as such.
   cob_values <- c("TOTAL", "NAT", "FOR", "EU28_FOR", "NEU28_FOR")
 
   emp_cob <- tryCatch({

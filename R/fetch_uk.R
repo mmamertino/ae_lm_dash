@@ -2,6 +2,16 @@
 # Fills UK data from 2021 onwards (Eurostat stopped publishing UK data post-Brexit).
 # Sources: ONS time series JSON, Nomis API, FRED backup, ONS XLSX downloads.
 
+# FIX 2026-05-19: API choices below are deliberate, not accidents.
+# - ONS /timeseries/{cdid}/data is an unofficial-but-stable JSON endpoint that
+#   the ONS website itself uses. We hit it via raw httr2 rather than the `onsr`
+#   CRAN package because `onsr` only exposes the Beta API (`api.ons.gov.uk`),
+#   which does NOT return the CDID-keyed labour-market headline series we need
+#   (LF24, MGSX, MGSR, ...). Switching to `onsr` would lose access to those.
+# - Nomis is hit via `nomisr` (CRAN) — this is the official ropensci client.
+# Both endpoints are reliable in practice; if either changes, fall back is
+# documented inline at the relevant block.
+
 library(httr2)
 library(jsonlite)
 library(dplyr)
@@ -11,10 +21,10 @@ library(purrr)
 library(zoo)
 library(readxl)
 library(fredr)
+library(nomisr) # FIX 2026-05-19: replaces the hand-rolled httr2 Nomis call in the emp_nace block below.
 
 source("R/country_crosswalk.R")
-
-fredr_set_key("a6ed0b45ec6a2eb6468e87c05197d0f4")
+# FIX 2026-05-19: hardcoded FRED API key removed; key is now set via R/setup.R from FRED_API_KEY env var.
 
 # ------------------------------------------------------------------
 # ONS time series JSON helper
@@ -222,63 +232,76 @@ fetch_uk_data <- function(start_date = "2005-01-01", cache_dir = "data/") {
   }
 
   # ------------------------------------------------------------------
-  # Step 3b, Row 5: Employment by industry — Nomis API (workforce jobs NM_4_1)
-  # SIC 2007 sections map 1:1 to NACE Rev. 2 sections (same ISIC lineage)
+  # Step 3b, Row 5: Employment by industry — Nomis workforce jobs (NM_130_1)
   # ------------------------------------------------------------------
-  # Nomis dataset NM_4_1 = Workforce jobs by industry (SA)
-  # Geography 2092957697 = UK total
-  # industry codes: SIC 2007 sections map to NACE letters directly
+  # FIX 2026-05-19: replaced hand-rolled httr2 call on NM_4_1 (which is actually
+  # "Jobseeker's Allowance by age and duration" — wrong dataset; the original code
+  # was silently always falling through to the EMP13 fallback) with a nomisr pull
+  # on NM_130_1 = "workforce jobs by industry (SIC 2007) - seasonally adjusted".
+  # The 21 SIC section codes (150994945..150994965) are still passed explicitly —
+  # Nomis does not expose the INDUSTRY codelist hierarchy via its metadata
+  # endpoints, so we cannot enumerate them dynamically; but the SIC letter is
+  # parsed back from INDUSTRY_NAME at runtime and 21-section completeness is
+  # asserted before the mapping is applied.
+  #
+  # Geography 2092957697 = UK total; item=1 = "total workforce jobs";
+  # measures=20100 = "value". Data is quarterly (DATE_NAME e.g. "March 2025").
+
+  # SIC 2007 sections map 1:1 to NACE Rev. 2 sections (both share the ISIC Rev. 4
+  # lineage at section level).
+  sic_to_nace <- tribble(
+    ~sic_letter, ~nace_r2,
+    "A","A", "B","B", "C","C", "D","D", "E","E", "F","F", "G","G",
+    "H","H", "I","I", "J","J", "K","K", "L","L", "M","M", "N","N",
+    "O","O", "P","P", "Q","Q", "R","R", "S","S", "T","T", "U","U"
+  )
 
   emp_nace <- tryCatch({
-    # Nomis API call for workforce jobs by SIC section
-    nomis_url <- paste0(
-      "https://www.nomisweb.co.uk/api/v01/dataset/NM_4_1.data.csv",
-      "?geography=2092957697",      # UK total
-      "&industry=37748736",         # All industries (total)
-      ",150994945,150994946,150994947,150994948", # A, B, C, D
-      ",150994949,150994950,150994951,150994952", # E, F, G, H
-      ",150994953,150994954,150994955,150994956", # I, J, K, L
-      ",150994957,150994958,150994959,150994960", # M, N, O, P
-      ",150994961,150994962,150994963",           # Q, R, S
-      "&measures=20100",             # Value
-      "&time=latest"
+    start_year <- format(start, "%Y")
+    nomis_raw <- nomis_get_data(
+      id        = "NM_130_1",
+      geography = "2092957697",
+      industry  = "150994945...150994965",
+      item      = 1,
+      measures  = 20100,
+      time      = paste0(start_year, ",latest")
     )
 
-    # Try the Nomis pull
-    resp <- request(nomis_url) %>%
-      req_headers("Accept" = "text/csv") %>%
-      req_perform()
-
-    nomis_csv <- resp %>% resp_body_string()
-
-    if (nchar(nomis_csv) > 100) {
-      nomis_df <- read.csv(textConnection(nomis_csv), stringsAsFactors = FALSE)
-
-      # Map Nomis industry codes to NACE letters
-      # TODO: The Nomis industry parameter codes need verification.
-      # If the above codes don't work, fall back to the nomisr package or manual download.
-      message("Nomis workforce jobs pull returned ", nrow(nomis_df), " rows")
-
-      # For now, create a minimal mapping
-      nomis_df %>%
-        transmute(
-          date         = as.Date(paste0(DATE, "-01")),
-          nace_r2      = INDUSTRY_NAME,  # Will need proper NACE mapping
-          emp_nace_ths = OBS_VALUE / 1000 # Convert to thousands if needed
-        ) %>%
-        filter(date >= start) %>%
-        add_uk_cols()
-    } else {
-      stop("Nomis returned insufficient data")
+    if (is.null(nomis_raw) || nrow(nomis_raw) == 0) {
+      stop("Nomis NM_130_1 returned 0 rows")
     }
+
+    parsed <- nomis_raw %>%
+      mutate(sic_letter = sub("^([A-U])\\s*:.*", "\\1", INDUSTRY_NAME)) %>%
+      filter(grepl("^[A-U]$", sic_letter))
+
+    unique_letters <- sort(unique(parsed$sic_letter))
+    if (length(unique_letters) != 21L) {
+      stop("Expected 21 SIC sections (A-U), got ", length(unique_letters),
+           ": ", paste(unique_letters, collapse = ","))
+    }
+    message("Nomis NM_130_1 returned ", nrow(parsed), " rows across ",
+            length(unique_letters), " SIC sections")
+
+    parsed %>%
+      inner_join(sic_to_nace, by = "sic_letter") %>%
+      transmute(
+        # NM_130_1 returns DATE as "YYYY-MM" with MM = last month of quarter
+        # (e.g. "2025-03" for 2025-Q1). Convert to start-of-quarter for parity
+        # with Eurostat's time = "YYYY-01-01" convention.
+        date         = zoo::as.Date(zoo::as.yearqtr(as.Date(paste0(DATE, "-01"))), frac = 0),
+        nace_r2      = nace_r2,
+        emp_nace_ths = OBS_VALUE / 1000 # NM_130_1 OBS_VALUE is in jobs; divide by 1000 for thousands.
+      ) %>%
+      filter(date >= start) %>%
+      add_uk_cols()
   }, error = function(e) {
-    # TODO: Nomis API pull for employment by industry needs refinement.
-    # The industry parameter codes need to be verified against the Nomis API docs.
-    # Manual CSV download fallback from:
-    # https://www.ons.gov.uk/employmentandlabourmarket/peopleinwork/employmentandemployeetypes/datasets/employmentbyindustryemp13
-    warning("Nomis employment by industry pull failed: ", conditionMessage(e))
-    message("TODO: UK employment by industry (Nomis/EMP13) needs manual setup. ",
-            "Download EMP13 from ONS and parse with readxl.")
+    # FIX 2026-05-19: primary path is now nomisr on NM_130_1 (above); this branch
+    # remains the manual-EMP13-XLSX fallback if Nomis is unavailable.
+    warning("Nomis NM_130_1 pull failed: ", conditionMessage(e))
+    message("TODO: UK employment by industry fallback — download EMP13 XLSX from ",
+            "https://www.ons.gov.uk/employmentandlabourmarket/peopleinwork/employmentandemployeetypes/datasets/employmentbyindustryemp13 ",
+            "and parse with readxl.")
     tibble(country_3digit = character(), country_2digit = character(),
            country_name = character(), date = as.Date(character()),
            nace_r2 = character(), emp_nace_ths = numeric(), source = character())
@@ -291,16 +314,27 @@ fetch_uk_data <- function(start_date = "2005-01-01", cache_dir = "data/") {
   # https://www.ons.gov.uk/employmentandlabourmarket/peopleinwork/employmentandemployeetypes/datasets/employmentbycountryofbirthnotseasonallyadjusted
   # The data is NSA only at the UK-born vs non-UK-born level.
   # ------------------------------------------------------------------
+  # FIX 2026-05-19: VERIFIED ON 2026-05-19 — both CDIDs return HTTP 404 on every
+  # ONS timeseries URL pattern (/{dataset_path}/timeseries/MGL2/data,
+  # /timeseries/MGL2/data, /timeseriestool/timeseries/MGL2/data; same for MGM2).
+  # The "approximate CDID" comments below match the original author's note that
+  # these were guessed, not verified. The correct UK-born / non-UK-born series
+  # live in the APS A12 dataset (employmentbycountryofbirthnotseasonallyadjusted),
+  # which the ONS only publishes as XLSX — there is no JSON timeseries endpoint
+  # for them. The code below is left in place per Task 7c instructions; the
+  # tryCatch falls through to the empty-tibble warn branch on every invocation,
+  # and UK emp_cob is effectively unsourced. Real fix: implement the EMP06 / A12
+  # XLSX download path in the tryCatch error branch (already TODOed below).
   emp_cob <- tryCatch({
     # Try pulling individual CDIDs from ONS time series
-    # UK-born employed: approximate CDID MGL2 (NSA, thousands)
+    # UK-born employed: approximate CDID MGL2 (NSA, thousands) — confirmed 404 in Task 7c verification (2026-05-19).
     uk_born_raw <- get_ons_timeseries(
       cdid         = "MGL2",
       dataset_path = "employmentandlabourmarket/peopleinwork/employmentandemployeetypes",
       label        = "UK-born employed"
     )
 
-    # Non-UK-born employed: approximate CDID MGM2 (NSA, thousands)
+    # Non-UK-born employed: approximate CDID MGM2 (NSA, thousands) — confirmed 404 in Task 7c verification (2026-05-19).
     non_uk_born_raw <- get_ons_timeseries(
       cdid         = "MGM2",
       dataset_path = "employmentandlabourmarket/peopleinwork/employmentandemployeetypes",
