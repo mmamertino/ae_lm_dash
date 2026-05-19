@@ -1,3 +1,32 @@
-.Renviron
-data/*.RDS
+# R
+.Rhistory
+.RData
+
+# Quarto
+_site/
+_freeze/
+*_files/
+*_cache/
+presentations/*.html
+presentations/bgi-logo.svg
+presentations/title-bg.png
+
+# Data — protect against accidental commits of large files
 data/*.csv
+data/*.parquet
+data/*.rds
+data/*.rda
+data/*.feather
+data/*.arrow
+
+# Claude Code working files
+.claude/data-qa/output/
+
+# Python (for data-qa scripts)
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db

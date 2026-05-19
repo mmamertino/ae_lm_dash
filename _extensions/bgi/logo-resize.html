@@ -1,0 +1,21 @@
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  Reveal.on('slidechanged', function(event) {
+    var logo = document.querySelector('.slide-logo');
+    if (!logo) return;
+    if (event.currentSlide && event.currentSlide.id === 'title-slide') {
+      logo.classList.add('title-slide-logo');
+    } else {
+      logo.classList.remove('title-slide-logo');
+    }
+  });
+  // Also handle the initial slide
+  Reveal.on('ready', function(event) {
+    var logo = document.querySelector('.slide-logo');
+    if (!logo) return;
+    if (event.currentSlide && event.currentSlide.id === 'title-slide') {
+      logo.classList.add('title-slide-logo');
+    }
+  });
+});
+</script>

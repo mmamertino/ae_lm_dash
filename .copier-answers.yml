@@ -1,0 +1,10 @@
+# Changes here will be overwritten by Copier
+_commit: v0.1.16
+_src_path: gh:Burning-Glass-Institute/bgi-econ-template
+create_github_repo: false
+economists: Mariano Mamertino
+include_presentations: true
+language: r
+project_name: Advanced Economies Labor Market Dashboard
+research_question: 'Creating a dashboard that sources a range of LM data from different
+    sources. '

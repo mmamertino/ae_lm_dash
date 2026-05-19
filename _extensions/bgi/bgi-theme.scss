@@ -1,0 +1,431 @@
+/*-- scss:defaults --*/
+
+// BGI Brand Colors
+$bgi-red: #c22036;
+$bgi-orange: #e0732b;
+$bgi-peach: #fed59f;
+$bgi-dark-blue: #115780;
+$bgi-charcoal: #333333;
+
+// Table tints
+$bgi-peach-tint: #fff0da;
+$bgi-pink-tint: #f0d0d4;
+
+// RevealJS variable overrides
+$font-family-sans-serif: Verdana, Geneva, Tahoma, sans-serif;
+$presentation-font-size-root: 28px;
+$presentation-heading-font: Verdana, Geneva, Tahoma, sans-serif;
+$presentation-heading-color: $bgi-dark-blue;
+$body-color: $bgi-charcoal;
+$body-bg: #ffffff;
+$link-color: $bgi-dark-blue;
+
+// Heading sizes (PPTX: h1=40pt, h2=32pt, h3=20pt at ~1.4px/pt)
+$presentation-h1-font-size: 2.0em;
+$presentation-h2-font-size: 1.6em;
+$presentation-h3-font-size: 1.0em;
+
+/*-- scss:rules --*/
+
+// ============================================================
+// Global
+// ============================================================
+.reveal .slides {
+  text-align: left;
+}
+
+.reveal .slides section {
+  padding: 30px 60px;
+  box-sizing: border-box;
+  top: 0 !important;
+}
+
+// ============================================================
+// Logo positioning (top-right, centered in white band)
+// ============================================================
+.reveal .slide-logo {
+  max-height: 37px !important;
+  height: 37px !important;
+  top: 23px !important;
+  right: 45px !important;
+  left: auto !important;
+  bottom: auto !important;
+}
+
+// Larger logo on the title slide (toggled via JS)
+.reveal .slide-logo.title-slide-logo {
+  max-height: 55px !important;
+  height: 55px !important;
+  top: 15px !important;
+  right: 30px !important;
+}
+
+// ============================================================
+// Content slide headings (PPTX: size 32 = ~45px)
+// ============================================================
+.reveal h2 {
+  color: $bgi-dark-blue;
+  font-size: 1.6em;
+  font-weight: normal;
+  margin-bottom: 0.1em;
+  margin-top: 0.2em;
+  padding-right: 180px; // leave room for logo
+}
+
+// Subtitle (PPTX: size 20 = ~28px)
+.reveal h3 {
+  color: $bgi-dark-blue;
+  font-size: 1.0em;
+  font-weight: normal;
+  margin-top: 0;
+  margin-bottom: 0.4em;
+}
+
+// ============================================================
+// Body text (PPTX: size 16 = ~22px)
+// ============================================================
+.reveal p {
+  font-size: 0.8em;
+  line-height: 1.5;
+  color: $bgi-charcoal;
+}
+
+.reveal ul,
+.reveal ol {
+  font-size: 0.8em;
+  line-height: 1.5;
+  color: $bgi-charcoal;
+}
+
+// Prevent font-size compounding on nested lists
+.reveal ul ul,
+.reveal ul ol,
+.reveal ol ul,
+.reveal ol ol {
+  font-size: 1em;
+}
+
+// ============================================================
+// Orange emphasis spans
+// ============================================================
+.reveal .emphasis {
+  color: $bgi-orange;
+}
+
+// ============================================================
+// Bullet styles
+// ============================================================
+.reveal ul {
+  list-style-type: disc;
+}
+
+.reveal ul ul {
+  list-style-type: circle;
+}
+
+// ============================================================
+// Footer bar - dark blue strip at bottom
+// ============================================================
+.reveal .footer {
+  background-color: $bgi-dark-blue !important;
+  color: #ffffff !important;
+  font-size: 0.35em !important;
+  padding: 0 20px !important;
+  width: 100% !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  box-sizing: border-box !important;
+  height: 28px !important;
+  display: flex !important;
+  align-items: center !important;
+  z-index: 10;
+
+  p {
+    color: #ffffff !important;
+    font-size: 1em;
+    margin: 0;
+  }
+}
+
+.reveal .footer a {
+  color: #ffffff;
+}
+
+// Slide number inside the footer bar
+.reveal .slide-number {
+  background: none !important;
+  color: #ffffff !important;
+  font-size: 0.35em !important;
+  bottom: 2px !important;
+  right: 20px !important;
+  position: fixed !important;
+  z-index: 11;
+
+  a {
+    color: #ffffff !important;
+  }
+}
+
+// ============================================================
+// Title slide — uses extracted background image
+// ============================================================
+.reveal section#title-slide,
+.reveal section.title-slide {
+  text-align: left !important;
+  padding: 0 60px !important;
+  height: 100% !important;
+  width: 100% !important;
+  position: relative !important;
+
+  // Use flexbox to distribute content properly
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+
+  h1.title {
+    color: #ffffff !important;
+    font-size: 2.0em !important;
+    font-weight: normal !important;
+    text-align: left !important;
+    margin-top: 210px !important;
+    padding-right: 0 !important;
+    text-shadow: none !important;
+  }
+
+  p.subtitle {
+    color: rgba(255, 255, 255, 0.85) !important;
+    font-size: 1.1em !important;
+    font-weight: normal !important;
+    text-align: left !important;
+    margin-bottom: 0 !important;
+  }
+
+  .quarto-title-authors {
+    display: none;
+  }
+
+  p.date {
+    color: #ffffff !important;
+    font-size: 0.7em !important;
+    text-align: left !important;
+    margin-top: auto !important;
+    margin-bottom: 20px !important;
+  }
+}
+
+// ============================================================
+// Section / transition slides (.section-slide)
+// — uses same background image as title slide
+// ============================================================
+.reveal section.section-slide {
+  padding: 0 60px;
+
+  h2 {
+    color: #ffffff;
+    font-size: 2.0em;
+    font-weight: normal;
+    margin-top: 200px;
+    padding-right: 0;
+  }
+
+  p {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 1.1em;
+  }
+}
+
+// Hide footer + slide number on dark background slides (title + section)
+.reveal.has-dark-background .footer {
+  display: none !important;
+}
+
+.reveal.has-dark-background .slide-number {
+  display: none !important;
+}
+
+// ============================================================
+// Tables — default orange style
+// ============================================================
+.reveal table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.55em;
+  margin-top: 0.5em;
+  border: none;
+}
+
+.reveal table thead tr {
+  background-color: $bgi-orange;
+  color: #ffffff;
+}
+
+.reveal table thead th {
+  padding: 10px 16px;
+  font-weight: bold;
+  border: none;
+  text-align: left;
+}
+
+.reveal table tbody tr {
+  border: none;
+}
+
+.reveal table tbody tr:nth-child(odd) {
+  background-color: $bgi-peach-tint;
+}
+
+.reveal table tbody tr:nth-child(even) {
+  background-color: #ffffff;
+}
+
+.reveal table tbody td {
+  padding: 8px 16px;
+  border: none;
+}
+
+// Remove any default reveal table borders
+.reveal table th,
+.reveal table td {
+  border: none !important;
+}
+
+// ============================================================
+// Table variant: red header + pink rows
+// ============================================================
+.table-red table thead tr,
+.table-red thead tr {
+  background-color: $bgi-red !important;
+}
+
+.table-red table tbody tr:nth-child(odd),
+.table-red tbody tr:nth-child(odd) {
+  background-color: $bgi-pink-tint !important;
+}
+
+.table-red table tbody tr:nth-child(even),
+.table-red tbody tr:nth-child(even) {
+  background-color: #ffffff !important;
+}
+
+// ============================================================
+// Two-column blue/white layout
+// ============================================================
+.columns-blue-white {
+  display: flex !important;
+  height: 65%;
+  margin-top: 0.5em;
+  overflow: hidden;
+
+  .column:first-child {
+    background-color: $bgi-dark-blue;
+    color: #ffffff;
+    padding: 30px;
+    flex: 1;
+    overflow: hidden;
+
+    h3,
+    p {
+      color: #ffffff;
+    }
+
+    p, li {
+      font-size: 0.7em;
+    }
+  }
+
+  .column:last-child {
+    background-color: #ffffff;
+    color: $bgi-charcoal;
+    padding: 30px;
+    flex: 1;
+    overflow: hidden;
+
+    h3 {
+      color: $bgi-dark-blue;
+    }
+
+    p, li {
+      font-size: 0.7em;
+    }
+  }
+}
+
+// ============================================================
+// Quote panel (red left panel)
+// ============================================================
+.quote-panel {
+  display: flex !important;
+  height: 65%;
+  margin-top: 0.5em;
+  overflow: hidden;
+
+  .column:first-child {
+    background-color: $bgi-red;
+    color: #ffffff;
+    padding: 30px;
+    flex: 0 0 38%;
+    position: relative;
+    overflow: hidden;
+
+    p {
+      color: #ffffff;
+      font-style: italic;
+      font-size: 0.7em;
+      line-height: 1.6;
+    }
+
+    // Decorative open-quote mark
+    &::after {
+      content: "\201C\201C";
+      font-size: 4em;
+      color: rgba(255, 255, 255, 0.3);
+      position: absolute;
+      bottom: 20px;
+      left: 30px;
+      line-height: 1;
+      font-style: normal;
+    }
+  }
+
+  .column:last-child {
+    background-color: #ffffff;
+    color: $bgi-charcoal;
+    padding: 30px;
+    flex: 1;
+    overflow: hidden;
+
+    p, li {
+      font-size: 0.7em;
+    }
+  }
+}
+
+// ============================================================
+// Callout box (right-side annotation)
+// ============================================================
+.callout-box {
+  background-color: #f8f8f8;
+  border-left: 4px solid $bgi-dark-blue;
+  padding: 16px 20px;
+  font-size: 0.6em;
+  line-height: 1.5;
+  margin-top: 1em;
+}
+
+// ============================================================
+// Image placeholder for complex infographics
+// ============================================================
+.image-placeholder {
+  border: 2px dashed #cccccc;
+  background: #f9f9f9;
+  padding: 40px;
+  text-align: center;
+  color: #999999;
+  font-size: 0.6em;
+  margin-top: 1em;
+
+  p {
+    color: #999999;
+  }
+}

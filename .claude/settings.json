@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(data-lookup)",
+      "Bash(bgi-catalog:*)",
+      "Bash(gh issue create --repo Burning-Glass-Institute/bgi-econ-template:*)",
+      "Bash(gh issue create --repo Burning-Glass-Institute/bgi-docs:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/check-template-version.sh"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "reviewer",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run .claude/skills/data-qa/scripts/validate.py reviewer || exit 2"
+          }
+        ]
+      },
+      {
+        "matcher": "pattern-miner",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run .claude/skills/data-qa/scripts/validate.py pattern-miner || exit 2"
+          }
+        ]
+      }
+    ]
+  }
+}

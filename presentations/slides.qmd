@@ -1,0 +1,23 @@
+---
+title: "Advanced Economies Labor Market Dashboard"
+subtitle: "Creating a dashboard that sources a range of LM data from different sources. "
+date: today
+date-format: "MMMM YYYY"
+format: bgi-revealjs
+---
+
+## Overview
+
+Short framing paragraph.
+
+- Key [takeaway]{.emphasis} one
+- Key [takeaway]{.emphasis} two
+
+## Findings {.section-slide}
+
+## First Finding
+
+### Supporting sub-headline
+
+- Point with [emphasis]{.emphasis}
+- Point with [emphasis]{.emphasis}

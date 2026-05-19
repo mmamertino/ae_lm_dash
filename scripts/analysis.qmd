@@ -1,0 +1,57 @@
+---
+title: "Exploratory Analysis"
+format: html
+cache: true
+---
+
+## Setup
+
+```{r setup}
+library(tidyverse)
+library(here)
+library(janitor)
+library(fixest)
+library(bgi)
+```
+
+## Data Loading
+
+```{r load-data}
+# Example: Load data using here() for paths
+# df <- read_csv(here("data", "my_data.csv")) %>%
+#   clean_names()
+```
+
+## Data Exploration
+
+```{r explore-summary}
+# Example: Summarize with explicit column selection
+# df %>%
+#   select(id, date, category, value) %>%
+#   summary()
+```
+
+```{r explore-distribution}
+# Example: Named figure chunk for the figure manifest
+# df %>%
+#   ggplot(aes(x = value)) +
+#   geom_histogram(bins = 50) +
+#   labs(title = "Distribution of values")
+#
+# ggsave(here("_site", "figures", "value_distribution.png"))
+```
+
+## Analysis
+
+```{r model-baseline}
+# Example: fixest regression
+# model <- feols(outcome ~ treatment | fixed_effects, data = df)
+# summary(model)
+```
+
+## Results
+
+```{r results-table}
+# Example: Results summary
+# modelsummary::modelsummary(model)
+```

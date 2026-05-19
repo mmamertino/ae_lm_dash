@@ -1,0 +1,10 @@
+project:
+  title: "Advanced Economies Labor Market Dashboard"
+  type: default
+  output-dir: _site
+
+format:
+  html:
+    toc: true
+    code-fold: true
+    self-contained: true
