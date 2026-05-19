@@ -1,0 +1,79 @@
+name: Render dashboard and deploy to Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dashboard.Rmd"
+      - "assets/**"
+      - "R/**"
+      - "data/**"
+      - ".github/workflows/deploy-dashboard.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pandoc
+        uses: r-lib/actions/setup-pandoc@v2
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::flexdashboard
+            any::rmarkdown
+            any::knitr
+            any::tidyverse
+            any::lubridate
+            any::scales
+            any::here
+            any::DT
+            any::eurostat
+            any::fredr
+            any::nomisr
+            any::httr2
+            any::jsonlite
+            any::zoo
+
+      - name: Render dashboard
+        # The dashboard loads its data from the committed RDS caches in data/,
+        # so no FRED / Eurostat / BLS / ONS credentials are needed in CI.
+        run: |
+          mkdir -p public
+          cp -r assets public/assets
+          Rscript -e 'rmarkdown::render("dashboard.Rmd", output_file = "index.html", output_dir = "public", quiet = TRUE)'
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

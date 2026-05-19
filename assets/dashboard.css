@@ -1,0 +1,80 @@
+/* BGI-branded layer for the flexdashboard.
+   Tracks the brand variables defined in _extensions/bgi/bgi-theme.scss but
+   targets bootstrap/flexdashboard selectors instead of RevealJS ones. */
+
+:root {
+  --bgi-red:        #c22036;
+  --bgi-orange:     #e0732b;
+  --bgi-peach:      #fed59f;
+  --bgi-peach-tint: #fff0da;
+  --bgi-dark-blue:  #115780;
+  --bgi-charcoal:   #333333;
+}
+
+body {
+  font-family: Verdana, Geneva, Tahoma, sans-serif;
+  color: var(--bgi-charcoal);
+  background-color: #ffffff;
+}
+
+/* Top nav bar — switch flexdashboard's default to BGI dark blue */
+.navbar.navbar-inverse {
+  background-color: var(--bgi-dark-blue);
+  border-color: var(--bgi-dark-blue);
+}
+.navbar.navbar-inverse .navbar-brand,
+.navbar.navbar-inverse .navbar-nav > li > a {
+  color: #ffffff;
+  font-family: Verdana, Geneva, Tahoma, sans-serif;
+}
+.navbar.navbar-inverse .navbar-nav > .active > a,
+.navbar.navbar-inverse .navbar-nav > .active > a:focus,
+.navbar.navbar-inverse .navbar-nav > .active > a:hover {
+  background-color: var(--bgi-orange);
+  color: #ffffff;
+}
+.navbar.navbar-inverse .navbar-nav > li > a:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Logo sizing in the navbar */
+.navbar-logo img {
+  max-height: 32px;
+}
+
+/* Section headings in panels */
+.chart-title {
+  color: var(--bgi-dark-blue);
+  font-weight: normal;
+  border-bottom: 2px solid var(--bgi-orange);
+  font-family: Verdana, Geneva, Tahoma, sans-serif;
+}
+
+/* Tables (DT / kable) */
+table.dataTable thead {
+  background-color: var(--bgi-orange);
+  color: #ffffff;
+}
+table.dataTable tbody tr:nth-child(odd) {
+  background-color: var(--bgi-peach-tint);
+}
+table.dataTable tbody tr:nth-child(even) {
+  background-color: #ffffff;
+}
+
+/* Value boxes — use the dark-blue brand color for primary KPIs */
+.value-box .value,
+.value-box .caption {
+  font-family: Verdana, Geneva, Tahoma, sans-serif;
+}
+.value-box.bg-primary {
+  background-color: var(--bgi-dark-blue) !important;
+}
+
+/* Subtle caption styling for chart footers rendered as paragraphs */
+p.caption,
+.figure-caption {
+  color: #6b6b6b;
+  font-size: 0.85em;
+  font-style: italic;
+}

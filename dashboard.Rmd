@@ -1,0 +1,538 @@
+---
+title: "Advanced Economies Labour Market Dashboard"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    logo: assets/bgi-logo.svg
+    css: assets/dashboard.css
+    self_contained: true
+    source_code: embed
+    navbar:
+      - { title: "About", href: "README.md", align: right }
+---
+
+```{r setup, include=FALSE}
+# Load packages, source the data pipeline, and pre-compute derived series.
+# All visualisations downstream read from the named list produced here —
+# no module is re-queried inside individual chart chunks.
+library(flexdashboard)
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(here)
+library(knitr)
+library(DT)
+
+# BGI palette hardcoded so the dashboard renders without the private `bgi`
+# R package (e.g. on a GitHub Actions runner). Hex codes are taken directly
+# from bgi::bgi_color_universe / scale_color_bgi_d("Default").
+bgi_palette_default <- c(
+  "#e0732b", # orange
+  "#4A71A0", # teal
+  "#FAB619", # yellow
+  "#666699", # purple-grey
+  "#4CAF50", # green
+  "#d15868", # red
+  "#42769b"  # blue
+)
+bgi_orange_green   <- c(low = "#A44914", mid = "#FEFDFC", high = "#2E7D32")
+scale_color_bgi    <- function(...) scale_color_manual(values = bgi_palette_default, ...)
+scale_fill_bgi     <- function(...) scale_fill_manual(values = bgi_palette_default, ...)
+scale_color_bgi_og <- function(midpoint = NULL, ...) {
+  scale_color_gradient2(low = bgi_orange_green["low"],
+                        mid = bgi_orange_green["mid"],
+                        high = bgi_orange_green["high"],
+                        midpoint = midpoint, ...)
+}
+
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  dev = "png",
+  dpi = 96
+)
+
+# Source the master loader. load_all_data() will read the per-module RDS
+# caches in data/ when they are <24h old, so this is cheap on repeat builds.
+source(here("R", "load_data.R"))
+lm_data <- load_all_data()
+
+# Pull out individual tibbles for readability
+vacancy_rate <- lm_data$vacancy_rate
+unemployment <- lm_data$unemployment
+employment   <- lm_data$employment
+activity     <- lm_data$activity
+emp_nace     <- lm_data$emp_nace
+emp_cob      <- lm_data$emp_cob
+
+# Country ordering used everywhere — keeps legends and facets stable
+country_order <- c("United States", "Germany", "France", "Italy",
+                   "Spain", "Netherlands", "United Kingdom")
+
+# ---------------------------------------------------------------
+# Derived series (computed once, reused across panels)
+# ---------------------------------------------------------------
+
+# Latest-quarter snapshot per country for the KPI table on the Overview tab
+latest_snapshot <- function(df, value_col, age_filter = NULL) {
+  if (nrow(df) == 0) return(tibble())
+  if (!is.null(age_filter) && "age" %in% names(df)) {
+    df <- df %>% filter(age == age_filter)
+  }
+  df %>%
+    group_by(country_name) %>%
+    filter(date == max(date, na.rm = TRUE)) %>%
+    ungroup() %>%
+    select(country_name, date, {{ value_col }})
+}
+
+# Age choices reflect coverage of the underlying sources:
+#  - Eurostat publishes both Y15-64 and Y20-64 for employment/activity;
+#  - US (FRED OECD-harmonised) and UK (ONS) only publish Y15-64.
+# Use Y15-64 throughout for full 7-country coverage.
+kpi_unemp <- latest_snapshot(unemployment, u_rate,   "Y15-74") %>%
+  rename(unemployment_pct = u_rate, unemp_date = date)
+kpi_emp   <- latest_snapshot(employment,   emp_rate, "Y15-64") %>%
+  rename(employment_pct = emp_rate, emp_date = date)
+kpi_act   <- latest_snapshot(activity,     act_rate, "Y15-64") %>%
+  rename(activity_pct = act_rate, act_date = date)
+kpi_vac   <- latest_snapshot(vacancy_rate, v_rate) %>%
+  rename(vacancy_pct = v_rate, vac_date = date)
+
+kpi_table <- tibble(country_name = country_order) %>%
+  left_join(kpi_unemp, by = "country_name") %>%
+  left_join(kpi_emp,   by = "country_name") %>%
+  left_join(kpi_act,   by = "country_name") %>%
+  left_join(kpi_vac,   by = "country_name")
+
+# Beveridge view: vacancy rate vs headline unemployment, by quarter
+beveridge <- vacancy_rate %>%
+  select(country_name, date, v_rate) %>%
+  inner_join(
+    unemployment %>%
+      filter(age == "Y15-74") %>%
+      select(country_name, date, u_rate),
+    by = c("country_name", "date")
+  ) %>%
+  mutate(year = year(date))
+
+# NACE share = section employment / sum across sections within country-quarter
+# Done per quarter to allow comparison even when absolute totals shift
+emp_nace_share <- emp_nace %>%
+  group_by(country_name, date) %>%
+  mutate(total_q = sum(emp_nace_ths, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(share = if_else(total_q > 0, emp_nace_ths / total_q, NA_real_))
+
+# Foreign-born share of employment = FOR / TOTAL.
+# Recent Eurostat vintages of lfsq_egacob have dropped the EU28_FOR /
+# NEU28_FOR dimensions, so make pivot_wider robust to columns that may not
+# be present in the current data vintage.
+cob_share_wide <- emp_cob %>%
+  filter(c_birth %in% c("TOTAL", "FOR", "EU28_FOR", "NEU28_FOR")) %>%
+  select(country_name, date, c_birth, emp_cob_ths) %>%
+  pivot_wider(names_from = c_birth, values_from = emp_cob_ths)
+
+for (col in setdiff(c("TOTAL", "FOR", "EU28_FOR", "NEU28_FOR"),
+                    names(cob_share_wide))) {
+  cob_share_wide[[col]] <- NA_real_
+}
+
+cob_share <- cob_share_wide %>%
+  mutate(
+    foreign_share = if_else(!is.na(TOTAL) & TOTAL > 0, FOR / TOTAL, NA_real_),
+    eu_share      = if_else(!is.na(TOTAL) & TOTAL > 0, EU28_FOR / TOTAL, NA_real_),
+    non_eu_share  = if_else(!is.na(TOTAL) & TOTAL > 0, NEU28_FOR / TOTAL, NA_real_)
+  )
+
+# Whether the EU vs non-EU foreign-born breakdown is available at all in the
+# current cache — controls whether the second panel on the Country of Birth
+# tab renders the chart or a brief "not available" note instead.
+has_eu_split <- any(!is.na(cob_share$eu_share))
+
+# Shared ggplot pieces
+date_scale <- scale_x_date(date_breaks = "3 years", date_labels = "%Y")
+
+bgi_line_theme <- theme_minimal(base_family = "sans") +
+  theme(
+    plot.title       = element_text(color = "#115780", size = 13),
+    plot.caption     = element_text(color = "#6b6b6b", size = 8,
+                                    hjust = 0, face = "italic"),
+    legend.position  = "bottom",
+    legend.title     = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+# Force the country factor order in every plot so legends line up across tabs
+order_country <- function(df) {
+  df %>% mutate(country_name = factor(country_name, levels = country_order))
+}
+```
+
+Overview {data-icon="fa-globe"}
+=======================================================================
+
+Row {data-height=170}
+-----------------------------------------------------------------------
+
+### Latest-quarter snapshot {.value-box-row}
+
+```{r kpi-table}
+# Single compact table instead of 28 value boxes — easier to scan across
+# countries and indicators in one view.
+kpi_table %>%
+  transmute(
+    Country      = country_name,
+    `Unemp date`   = format(unemp_date, "%Y-%m"),
+    `Unemployment 15-74 (%)`  = round(unemployment_pct, 1),
+    `Employment 15-64 (%)`    = round(employment_pct, 1),
+    `Activity 15-64 (%)`      = round(activity_pct, 1),
+    `Vacancy rate (%)`        = round(vacancy_pct, 1)
+  ) %>%
+  datatable(
+    rownames = FALSE,
+    options  = list(dom = "t", paging = FALSE, ordering = FALSE)
+  )
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Headline unemployment rate (15–74) — all economies
+
+```{r overview-unemployment-chart}
+unemployment %>%
+  filter(age == "Y15-74") %>%
+  order_country() %>%
+  ggplot(aes(x = date, y = u_rate, color = country_name)) +
+  geom_line(size = 0.7) +
+  scale_color_bgi() +
+  date_scale +
+  labs(
+    title   = "Harmonised unemployment rate, 15-74, seasonally adjusted",
+    x       = NULL,
+    y       = "% of labour force",
+    caption = paste(
+      "Sources: Eurostat (une_rt_q), ONS, FRED (LRUN74TTUSQ156S).",
+      "US and UK reweighted to OECD-harmonised basis;",
+      "small methodological differences vs Eurostat remain."
+    )
+  ) +
+  bgi_line_theme
+```
+
+Unemployment {data-icon="fa-user-slash"}
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Headline unemployment (15–74)
+
+```{r unemployment-headline}
+unemployment %>%
+  filter(age == "Y15-74") %>%
+  order_country() %>%
+  ggplot(aes(x = date, y = u_rate, color = country_name)) +
+  geom_line(size = 0.7) +
+  scale_color_bgi() +
+  date_scale +
+  labs(
+    title   = "Unemployment rate, 15-74",
+    x       = NULL, y = "% of labour force",
+    caption = "Sources: Eurostat une_rt_q (EU5), ONS (UK 2021+), FRED LRUN74TTUSQ156S (US). Seasonally adjusted."
+  ) +
+  bgi_line_theme
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Change in unemployment rate vs 2019 average (percentage points)
+
+```{r unemployment-vs-2019}
+# Originally planned this panel as youth vs prime-age small multiples, but the
+# underlying sources don't overlap: Eurostat publishes Y15-74 + Y25-74,
+# FRED-OECD (US) publishes Y15-74 + Y_LT25, and ONS (UK) publishes Y15-74
+# only — there is no shared age split across all 7 countries. Substituting
+# a recovery-from-2019 view that uses the universally-available Y15-74 series.
+unemployment_2019_baseline <- unemployment %>%
+  filter(age == "Y15-74", year(date) == 2019) %>%
+  group_by(country_name) %>%
+  summarise(baseline_u = mean(u_rate, na.rm = TRUE), .groups = "drop")
+
+unemployment %>%
+  filter(age == "Y15-74", date >= as.Date("2019-01-01")) %>%
+  inner_join(unemployment_2019_baseline, by = "country_name") %>%
+  mutate(delta_pp = u_rate - baseline_u) %>%
+  order_country() %>%
+  ggplot(aes(x = date, y = delta_pp, color = country_name)) +
+  geom_hline(yintercept = 0, color = "#999999", linewidth = 0.3) +
+  geom_line(size = 0.7) +
+  scale_color_bgi() +
+  date_scale +
+  labs(
+    title   = "Unemployment rate, change vs 2019 average",
+    x       = NULL, y = "Percentage-point change vs 2019",
+    caption = paste(
+      "Baseline = mean(Y15-74 unemployment, 2019).",
+      "Positive = labour market weaker than 2019; negative = tighter than 2019."
+    )
+  ) +
+  bgi_line_theme
+```
+
+Employment & Activity {data-icon="fa-briefcase"}
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Employment rate (15–64)
+
+```{r employment-rate}
+# Y15-64 used because US (FRED OECD-harmonised) and UK (ONS) only publish
+# this age band — Y20-64 would silently drop those two countries.
+employment %>%
+  filter(age == "Y15-64") %>%
+  order_country() %>%
+  ggplot(aes(x = date, y = emp_rate, color = country_name)) +
+  geom_line(size = 0.7) +
+  scale_color_bgi() +
+  date_scale +
+  labs(
+    title   = "Employment rate, 15-64",
+    x       = NULL, y = "% of working-age population",
+    caption = "Sources: Eurostat lfsi_emp_q, ONS, FRED LREM64TTUSQ156S. Seasonally adjusted."
+  ) +
+  bgi_line_theme
+```
+
+### Activity rate (15–64)
+
+```{r activity-rate}
+activity %>%
+  filter(age == "Y15-64") %>%
+  order_country() %>%
+  ggplot(aes(x = date, y = act_rate, color = country_name)) +
+  geom_line(size = 0.7) +
+  scale_color_bgi() +
+  date_scale +
+  labs(
+    title   = "Labour-force participation, 15-64",
+    x       = NULL, y = "% of population",
+    caption = "Sources: Eurostat lfsi_emp_q (indic_em=ACT), ONS, FRED LRAC64TTUSQ156S. Seasonally adjusted."
+  ) +
+  bgi_line_theme
+```
+
+Vacancies {data-icon="fa-bullhorn"}
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Vacancy rate (% of total posts, NACE B–S)
+
+```{r vacancy-line}
+vacancy_rate %>%
+  order_country() %>%
+  ggplot(aes(x = date, y = v_rate, color = country_name)) +
+  geom_line(size = 0.7) +
+  scale_color_bgi() +
+  date_scale +
+  labs(
+    title   = "Job vacancy rate",
+    x       = NULL, y = "% of occupied + vacant posts",
+    caption = paste(
+      "Sources: Eurostat jvs_q_nace2 (EU5 + UK pre-2021), ONS Vacancy Survey (UK 2021+), FRED JTSJOR (US).",
+      "Coverage: NACE Rev. 2 sections B-S."
+    )
+  ) +
+  bgi_line_theme
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Beveridge curve — vacancies vs unemployment, faceted by country
+
+```{r beveridge}
+# Each panel traces the historical (u, v) path of one country, with point
+# colour graded by year. The orange-green diverging scale gives an intuitive
+# old-to-new reading (orange = older, green = newer).
+beveridge %>%
+  order_country() %>%
+  ggplot(aes(x = u_rate, y = v_rate, color = year)) +
+  geom_path(alpha = 0.4, linewidth = 0.4) +
+  geom_point(size = 1.1) +
+  facet_wrap(~ country_name, ncol = 4, scales = "free") +
+  scale_color_bgi_og(midpoint = median(beveridge$year, na.rm = TRUE)) +
+  labs(
+    title   = "Beveridge curve: vacancies vs unemployment by quarter",
+    x       = "Unemployment rate (%)",
+    y       = "Vacancy rate (%)",
+    color   = "Year",
+    caption = paste(
+      "Sources: vacancy + unemployment series as in adjacent tabs.",
+      "Free axes per country — shape and shifts of the curve matter more than absolute levels."
+    )
+  ) +
+  bgi_line_theme +
+  theme(legend.position = "right")
+```
+
+Industry composition {data-icon="fa-industry"}
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Latest-quarter share of employment by NACE section
+
+```{r emp-nace-bars}
+# A grouped bar across countries gets cluttered with 21 sections, so we facet
+# by country and let each bar express its country's share within that quarter.
+emp_nace_share_latest <- emp_nace_share %>%
+  group_by(country_name) %>%
+  filter(date == max(date, na.rm = TRUE)) %>%
+  ungroup() %>%
+  order_country()
+
+emp_nace_share_latest %>%
+  mutate(nace_r2 = factor(nace_r2, levels = sort(unique(nace_r2), decreasing = TRUE))) %>%
+  ggplot(aes(x = share, y = nace_r2, fill = country_name)) +
+  geom_col() +
+  facet_wrap(~ country_name, ncol = 4) +
+  scale_fill_bgi() +
+  scale_x_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    title   = "Share of employment by NACE Rev. 2 section (latest quarter)",
+    x       = "Share of total employment",
+    y       = "NACE section",
+    caption = paste(
+      "Sources: Eurostat lfsq_egan2 (EU5 + UK pre-2021), Nomis NM_130_1 (UK 2021+), BLS CES (US).",
+      "Caveat: BLS CES groups O-Q and R-U are split evenly across constituent NACE letters — approximate."
+    )
+  ) +
+  bgi_line_theme +
+  theme(legend.position = "none",
+        axis.text.y     = element_text(size = 7))
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Top-4 sectors by latest-quarter share — share over time
+
+```{r emp-nace-top4-trend}
+# For each country, identify the four largest NACE sections in the latest
+# quarter, then plot their share of employment over time within that country.
+top4_per_country <- emp_nace_share %>%
+  group_by(country_name) %>%
+  filter(date == max(date, na.rm = TRUE)) %>%
+  slice_max(share, n = 4, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(country_name, nace_r2)
+
+emp_nace_share %>%
+  inner_join(top4_per_country, by = c("country_name", "nace_r2")) %>%
+  order_country() %>%
+  ggplot(aes(x = date, y = share, color = nace_r2)) +
+  geom_line(size = 0.55) +
+  facet_wrap(~ country_name, ncol = 4, scales = "free_y") +
+  scale_color_bgi() +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  date_scale +
+  labs(
+    title   = "Largest 4 NACE sections per country — share over time",
+    x       = NULL, y = "Share of total employment",
+    color   = "NACE",
+    caption = "Top-4 sections identified at the latest available quarter and held fixed across time within each country."
+  ) +
+  bgi_line_theme
+```
+
+Country of birth {data-icon="fa-globe-europe"}
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Foreign-born share of employment over time
+
+```{r cob-foreign-share}
+cob_share %>%
+  filter(!is.na(foreign_share)) %>%
+  order_country() %>%
+  ggplot(aes(x = date, y = foreign_share, color = country_name)) +
+  geom_line(size = 0.7) +
+  scale_color_bgi() +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  date_scale +
+  labs(
+    title   = "Foreign-born share of employment, ages 15-64",
+    x       = NULL, y = "Foreign-born / total employed",
+    caption = paste(
+      "Sources: Eurostat lfsq_egacob (EU5 + UK pre-2021), CPS via FRED (US).",
+      "Pre-2023 Eurostat releases populate Q2 only; intervening quarters appear as gaps.",
+      "Caveat: US foreign-born series uses CPS — slightly different concept vs the EU LFS."
+    )
+  ) +
+  bgi_line_theme
+```
+
+Row
+-----------------------------------------------------------------------
+
+### EU vs non-EU foreign-born share, where available
+
+```{r cob-eu-vs-non-eu, eval=has_eu_split}
+# This split exists only in the Eurostat country-of-birth release — US and
+# UK post-2021 only carry the aggregate FOR series, so they show empty panels
+# here on purpose (preserves the 7-country grid so the eye can spot what's
+# missing).
+cob_share %>%
+  select(country_name, date, eu_share, non_eu_share) %>%
+  pivot_longer(c(eu_share, non_eu_share),
+               names_to = "origin", values_to = "share") %>%
+  filter(!is.na(share)) %>%
+  mutate(
+    origin = recode(origin,
+                    "eu_share"     = "EU-born",
+                    "non_eu_share" = "Non-EU-born")
+  ) %>%
+  order_country() %>%
+  ggplot(aes(x = date, y = share, color = origin)) +
+  geom_line(size = 0.55) +
+  facet_wrap(~ country_name, ncol = 4, scales = "free_y") +
+  scale_color_bgi() +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  date_scale +
+  labs(
+    title   = "Foreign-born share of employment by origin",
+    x       = NULL, y = "Share of total employed",
+    color   = NULL,
+    caption = paste(
+      "Source: Eurostat lfsq_egacob — EU28_FOR and NEU28_FOR series.",
+      "US and UK (post-2021) only publish the aggregate FOR series and so appear blank in this view."
+    )
+  ) +
+  bgi_line_theme
+```
+
+```{r cob-eu-vs-non-eu-missing, eval=!has_eu_split, results='asis'}
+# Fallback note when the current cache has no EU28_FOR / NEU28_FOR rows
+# (recent Eurostat vintages of lfsq_egacob omit these dimensions).
+cat(
+  "**EU vs non-EU foreign-born breakdown is not available in the current ",
+  "data vintage.** The Eurostat `lfsq_egacob` release backing the rest of ",
+  "this tab no longer publishes the `EU28_FOR` / `NEU28_FOR` `c_birth` ",
+  "categories — only the aggregate `FOR` (shown above), `NAT`, and ",
+  "`TOTAL` series. Refresh `data/eurostat_data_*.RDS` from a vintage that ",
+  "still includes the split to re-enable this panel.\n",
+  sep = ""
+)
+```
