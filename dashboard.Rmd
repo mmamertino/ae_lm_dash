@@ -26,7 +26,11 @@ library(DT)
 
 # BGI palette hardcoded so the dashboard renders without the private `bgi`
 # R package (e.g. on a GitHub Actions runner). Hex codes are taken directly
-# from bgi::bgi_color_universe / scale_color_bgi_d("Default").
+# from bgi::bgi_color_universe / scale_color_bgi_d("Default") — the first
+# seven entries reproduce the BGI "Default" categorical scale; the remaining
+# entries are pulled from bgi_color_universe to extend the cycle so charts
+# with up to ~14 distinct categories (e.g. NACE-section small multiples)
+# render without "Insufficient values in manual scale" errors.
 bgi_palette_default <- c(
   "#e0732b", # orange
   "#4A71A0", # teal
@@ -34,11 +38,23 @@ bgi_palette_default <- c(
   "#666699", # purple-grey
   "#4CAF50", # green
   "#d15868", # red
-  "#42769b"  # blue
+  "#42769b", # blue
+  "#2D5178", # dark teal
+  "#A44914", # dark orange
+  "#c22036", # dark red
+  "#03497a", # dark blue
+  "#58585B", # grey
+  "#efb995", # light orange
+  "#729ACB"  # light teal
 )
 bgi_orange_green   <- c(low = "#A44914", mid = "#FEFDFC", high = "#2E7D32")
-scale_color_bgi    <- function(...) scale_color_manual(values = bgi_palette_default, ...)
-scale_fill_bgi     <- function(...) scale_fill_manual(values = bgi_palette_default, ...)
+# Use colorRampPalette as a final safety net so any n is supported.
+bgi_palette_fn     <- function(n) {
+  if (n <= length(bgi_palette_default)) bgi_palette_default[seq_len(n)]
+  else colorRampPalette(bgi_palette_default)(n)
+}
+scale_color_bgi    <- function(...) discrete_scale("colour", palette = bgi_palette_fn, ...)
+scale_fill_bgi     <- function(...) discrete_scale("fill",   palette = bgi_palette_fn, ...)
 scale_color_bgi_og <- function(midpoint = NULL, ...) {
   scale_color_gradient2(low = bgi_orange_green["low"],
                         mid = bgi_orange_green["mid"],
