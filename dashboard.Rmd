@@ -190,18 +190,19 @@ order_country <- function(df) {
 Overview {data-icon="fa-globe"}
 =======================================================================
 
-Row {data-height=170}
+Row
 -----------------------------------------------------------------------
 
-### Latest-quarter snapshot {.value-box-row}
+### Latest-quarter snapshot — all indicators, all economies
 
 ```{r kpi-table}
-# Single compact table instead of 28 value boxes — easier to scan across
-# countries and indicators in one view.
+# Single Row + single table, so the entire Overview fits within one viewport
+# (no vertical scroll). Headline-chart was moved out and onto the
+# Unemployment tab to keep this view focused on point-in-time levels.
 kpi_table %>%
   transmute(
-    Country      = country_name,
-    `Unemp date`   = format(unemp_date, "%Y-%m"),
+    Country                   = country_name,
+    `Unemp date`              = format(unemp_date, "%Y-%m"),
     `Unemployment 15-74 (%)`  = round(unemployment_pct, 1),
     `Employment 15-64 (%)`    = round(employment_pct, 1),
     `Activity 15-64 (%)`      = round(activity_pct, 1),
@@ -209,34 +210,10 @@ kpi_table %>%
   ) %>%
   datatable(
     rownames = FALSE,
-    options  = list(dom = "t", paging = FALSE, ordering = FALSE)
+    class    = "compact stripe hover",
+    options  = list(dom = "t", paging = FALSE, ordering = FALSE,
+                    scrollY = FALSE, autoWidth = FALSE)
   )
-```
-
-Row
------------------------------------------------------------------------
-
-### Headline unemployment rate (15–74) — all economies
-
-```{r overview-unemployment-chart}
-unemployment %>%
-  filter(age == "Y15-74") %>%
-  order_country() %>%
-  ggplot(aes(x = date, y = u_rate, color = country_name)) +
-  geom_line(size = 0.7) +
-  scale_color_bgi() +
-  date_scale +
-  labs(
-    title   = "Harmonised unemployment rate, 15-74, seasonally adjusted",
-    x       = NULL,
-    y       = "% of labour force",
-    caption = paste(
-      "Sources: Eurostat (une_rt_q), ONS, FRED (LRUN74TTUSQ156S).",
-      "US and UK reweighted to OECD-harmonised basis;",
-      "small methodological differences vs Eurostat remain."
-    )
-  ) +
-  bgi_line_theme
 ```
 
 Unemployment {data-icon="fa-user-slash"}
@@ -262,9 +239,6 @@ unemployment %>%
   ) +
   bgi_line_theme
 ```
-
-Row
------------------------------------------------------------------------
 
 ### Change in unemployment rate vs 2019 average (percentage points)
 
@@ -370,21 +344,20 @@ vacancy_rate %>%
   bgi_line_theme
 ```
 
-Row
------------------------------------------------------------------------
-
 ### Beveridge curve — vacancies vs unemployment, faceted by country
 
 ```{r beveridge}
 # Each panel traces the historical (u, v) path of one country, with point
 # colour graded by year. The orange-green diverging scale gives an intuitive
-# old-to-new reading (orange = older, green = newer).
+# old-to-new reading (orange = older, green = newer). ncol=2 keeps the
+# facets legible when this chart shares the row with the vacancy-line chart
+# (each panel gets ~half the page width).
 beveridge %>%
   order_country() %>%
   ggplot(aes(x = u_rate, y = v_rate, color = year)) +
   geom_path(alpha = 0.4, linewidth = 0.4) +
   geom_point(size = 1.1) +
-  facet_wrap(~ country_name, ncol = 4, scales = "free") +
+  facet_wrap(~ country_name, ncol = 2, scales = "free") +
   scale_color_bgi_og(midpoint = median(beveridge$year, na.rm = TRUE)) +
   labs(
     title   = "Beveridge curve: vacancies vs unemployment by quarter",
@@ -411,6 +384,8 @@ Row
 ```{r emp-nace-bars}
 # A grouped bar across countries gets cluttered with 21 sections, so we facet
 # by country and let each bar express its country's share within that quarter.
+# ncol=2 keeps each panel readable when the chart shares a row with the
+# Top-4 trend chart.
 emp_nace_share_latest <- emp_nace_share %>%
   group_by(country_name) %>%
   filter(date == max(date, na.rm = TRUE)) %>%
@@ -421,7 +396,7 @@ emp_nace_share_latest %>%
   mutate(nace_r2 = factor(nace_r2, levels = sort(unique(nace_r2), decreasing = TRUE))) %>%
   ggplot(aes(x = share, y = nace_r2, fill = country_name)) +
   geom_col() +
-  facet_wrap(~ country_name, ncol = 4) +
+  facet_wrap(~ country_name, ncol = 2) +
   scale_fill_bgi() +
   scale_x_continuous(labels = percent_format(accuracy = 1)) +
   labs(
@@ -438,14 +413,13 @@ emp_nace_share_latest %>%
         axis.text.y     = element_text(size = 7))
 ```
 
-Row
------------------------------------------------------------------------
-
 ### Top-4 sectors by latest-quarter share — share over time
 
 ```{r emp-nace-top4-trend}
 # For each country, identify the four largest NACE sections in the latest
 # quarter, then plot their share of employment over time within that country.
+# ncol=2 keeps the per-country facets large enough to read alongside the
+# share-bars chart in the side-by-side layout.
 top4_per_country <- emp_nace_share %>%
   group_by(country_name) %>%
   filter(date == max(date, na.rm = TRUE)) %>%
@@ -458,7 +432,7 @@ emp_nace_share %>%
   order_country() %>%
   ggplot(aes(x = date, y = share, color = nace_r2)) +
   geom_line(size = 0.55) +
-  facet_wrap(~ country_name, ncol = 4, scales = "free_y") +
+  facet_wrap(~ country_name, ncol = 2, scales = "free_y") +
   scale_color_bgi() +
   scale_y_continuous(labels = percent_format(accuracy = 1)) +
   date_scale +
@@ -500,9 +474,6 @@ cob_share %>%
   bgi_line_theme
 ```
 
-Row
------------------------------------------------------------------------
-
 ### EU vs non-EU foreign-born share, where available
 
 ```{r cob-eu-vs-non-eu, eval=has_eu_split}
@@ -523,7 +494,7 @@ cob_share %>%
   order_country() %>%
   ggplot(aes(x = date, y = share, color = origin)) +
   geom_line(size = 0.55) +
-  facet_wrap(~ country_name, ncol = 4, scales = "free_y") +
+  facet_wrap(~ country_name, ncol = 2, scales = "free_y") +
   scale_color_bgi() +
   scale_y_continuous(labels = percent_format(accuracy = 1)) +
   date_scale +
